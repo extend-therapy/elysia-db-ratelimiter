@@ -66,7 +66,7 @@ const app = new Elysia()
 | `dbPath` | `string` | `':memory:'` | Path for SQLite file (ignored for Redis). |
 | `methods` | `DBRLMethod[]` | `['POST', 'PUT', ...]` | HTTP methods to rate limit. **Note: GET is excluded by default.** |
 | `pattern` | `DBRLPattern` | `'IPFullRoute'` | Strategy for identifying unique request buckets. |
-| `whitelistMode` | `boolean` | `false` | If `true`, only routes in `routes` are limited. If `false`, all routes are limited. |
+| `whitelistMode` | `boolean` | `false` | If `true`, only routes in `routes` are limited. If `false`, all routes are limited (even if no `limit`, no `window`, and no `routes` are specified). |
 | `as` | `'scoped' \| 'global'` | `'scoped'` | Plugin scope. |
 | `routes` | `(string \| PathConfig)[]` | `undefined` | Whitelist of routes to limit. Supports per-route overrides. |
 | `failOpen` | `boolean` | `true` | If `true`, allows requests if the database fails. |
