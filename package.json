@@ -1,0 +1,14 @@
+{
+  "name": "elysia-db-ratelimiter",
+  "module": "index.ts",
+  "type": "module",
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5",
+    "elysia": "^1.4.22",
+    "pino": "^10.0.0",
+    "elysia-ip": "^1.0.0"
+  }
+}
