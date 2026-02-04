@@ -1,14 +1,20 @@
 {
-  "name": "elysia-db-ratelimiter",
+  "name": "@extend-therapy/elysia-db-ratelimiter",
   "module": "index.ts",
   "type": "module",
   "devDependencies": {
     "@types/bun": "latest"
   },
   "peerDependencies": {
+    "@bun/types": "^1.3.0",
     "typescript": "^5",
     "elysia": "^1.4.22",
     "pino": "^10.0.0",
     "elysia-ip": "^1.0.0"
-  }
+  },
+  "include": [
+    "dist/**/*",
+    "README.md",
+    "package.json"
+  ]
 }

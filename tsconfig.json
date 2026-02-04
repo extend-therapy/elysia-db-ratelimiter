@@ -4,11 +4,13 @@
     "lib": [
       "ESNext"
     ],
+    "declaration": true,
+    "declarationDir": "dist/types",
     "target": "ESNext",
     "module": "Preserve",
     "moduleDetection": "force",
     "jsx": "react-jsx",
-    "allowJs": true,
+    "allowJs": false,
     // Bundler mode
     "moduleResolution": "bundler",
     "verbatimModuleSyntax": true,

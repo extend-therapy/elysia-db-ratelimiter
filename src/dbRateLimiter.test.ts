@@ -1,14 +1,9 @@
-import { describe, expect, it, mock } from 'bun:test';
-
-// Mock @/db before importing the plugin
-mock.module('@/db', () => ({
-  getRedisClient: () => null,
-  getPrismaClient: () => ({})
-}));
+import { describe, expect, it } from 'bun:test';
 
 import { Elysia } from 'elysia';
 import { dbRateLimiter } from './dbRateLimiter';
 import { SqliteRateLimitStore } from './helpers/sqliteStore';
+import { RedisRateLimitStore } from './helpers/redisStore';
 
 describe('dbRateLimiter', () => {
   describe('SqliteRateLimitStore', () => {
@@ -38,6 +33,106 @@ describe('dbRateLimiter', () => {
       const store = new SqliteRateLimitStore(':memory:');
       const result = await store.get('non-existent');
       expect(result).toBeNull();
+    });
+  });
+
+  describe('RedisRateLimitStore', () => {
+    const mockRedis = {
+      data: new Map<string, string>(),
+      get(key: string) {
+        return Promise.resolve(this.data.get(key) || null);
+      },
+      set(key: string, value: string, _mode?: string, _ttl?: number) {
+        this.data.set(key, value);
+        return Promise.resolve('OK');
+      },
+      keys(pattern: string) {
+        const regex = new RegExp('^' + (pattern as string).replace('*', '.*') + '$');
+        return Promise.resolve(Array.from(this.data.keys()).filter((k) => regex.test(k as string)));
+      },
+      del(...keys: string[]) {
+        (keys as string[]).forEach((k) => this.data.delete(k));
+        return Promise.resolve(keys.length);
+      },
+    } as any;
+
+    it('should set and get values in redis', async () => {
+      const store = new RedisRateLimitStore(mockRedis);
+      const key = 'test-key';
+      const value = { count: 1, resetTime: Date.now() + 1000 };
+
+      await store.set(key, value, 1);
+      const result = await store.get(key);
+
+      expect(result).toEqual(value);
+      expect(mockRedis.data.has(`rl:${key}`)).toBe(true);
+    });
+
+    it('should reset redis store', async () => {
+      const store = new RedisRateLimitStore(mockRedis);
+      await store.set('key1', { count: 1, resetTime: 123 }, 60);
+      await store.set('key2', { count: 1, resetTime: 123 }, 60);
+
+      expect(mockRedis.data.size).toBeGreaterThanOrEqual(2);
+
+      await store.reset();
+
+      expect(mockRedis.data.size).toBe(0);
+    });
+  });
+
+  describe('Redis Plugin Integration', () => {
+    const mockRedis = {
+      data: new Map<string, string>(),
+      get(key: string) {
+        return Promise.resolve(this.data.get(key) || null);
+      },
+      set(key: string, value: string, _mode?: string, _ttl?: number) {
+        this.data.set(key, value);
+        return Promise.resolve('OK');
+      },
+    } as any;
+
+    it('should throw error when backingDb is redis but no client provided', () => {
+      expect(() => {
+        dbRateLimiter({
+          backingDb: 'redis',
+        });
+      }).toThrow('Redis client is required when backingDb is "redis"');
+    });
+
+    it('should use redis when backingDb is auto and client is provided', async () => {
+      const app = new Elysia()
+        .use(
+          dbRateLimiter({
+            backingDb: 'auto',
+            redisClient: mockRedis,
+            limit: 1,
+          })
+        )
+        .get('/', () => 'ok');
+
+      await app.handle(new Request('http://localhost/', { headers: { 'x-forwarded-for': 'user1' } }));
+
+      // Check if it was stored in redis mock
+      const keys = Array.from(mockRedis.data.keys()) as string[];
+      expect(keys.some((k) => k.startsWith('rl:'))).toBe(true);
+    });
+
+    it('should fallback to sqlite when backingDb is auto and no redis client', async () => {
+      const app = new Elysia()
+        .use(
+          dbRateLimiter({
+            backingDb: 'auto',
+            limit: 1,
+          })
+        )
+        .get('/', () => 'ok');
+
+      const res = await app.handle(
+        new Request('http://localhost/', { headers: { 'x-forwarded-for': 'user-sqlite' } })
+      );
+      expect(res.status).toBe(200);
     });
   });
 

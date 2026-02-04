@@ -1,5 +1,5 @@
 import { Database } from 'bun:sqlite';
-import { RateLimitStore, RateLimitStoreValue } from '../types';
+import type { RateLimitStore, RateLimitStoreValue } from '../types';
 
 export class SqliteRateLimitStore implements RateLimitStore<Database> {
   public client: Database;

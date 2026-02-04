@@ -1,8 +1,7 @@
-import { RedisClientType } from '@/db';
-import { RateLimitStore, RateLimitStoreValue } from '../types';
+import type { RateLimitStore, RateLimitStoreValue } from '../types';
 
-export class RedisRateLimitStore implements RateLimitStore<RedisClientType> {
-  constructor(public client: RedisClientType) {}
+export class RedisRateLimitStore implements RateLimitStore<Bun.RedisClient> {
+  constructor(public client: Bun.RedisClient) {}
 
   async get(key: string): Promise<RateLimitStoreValue | undefined | null> {
     const val = await this.client?.get(`rl:${key}`);

@@ -1,15 +1,15 @@
-import type { LoggerOptions } from 'pino';
+import type { LoggerOptions } from "pino";
 
 /**
  * Defines the scope of the rate limiter plugin.
  * 'global' applies to the entire app, 'scoped' applies to the current route group.
  */
-export type DBRLScope = 'global' | 'scoped';
+export type DBRLScope = "global" | "scoped";
 
 /**
  * HTTP methods that the rate limiter will monitor.
  */
-export type DBRLMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'OPTIONS' | 'HEAD';
+export type DBRLMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD";
 
 /**
  * Strategy for generating the rate limit tracking ID.
@@ -18,7 +18,7 @@ export type DBRLMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'OPTIONS'
  * - 'IP': Unique per IP (applies site-wide for that user).
  * - 'Route': Unique per Path (applies to all users for that route).
  */
-export type DBRLPattern = 'IPFullRoute' | 'IPRouteNoParams' | 'IP' | 'Route';
+export type DBRLPattern = "IPFullRoute" | "IPRouteNoParams" | "IP" | "Route";
 
 /**
  * The type of database used for persistence.
@@ -26,7 +26,7 @@ export type DBRLPattern = 'IPFullRoute' | 'IPRouteNoParams' | 'IP' | 'Route';
  * - 'sqlite': Use SQLite (in-memory with :memory: path)
  * - 'auto': Try Redis first, fallback to SQLite (default behavior)
  */
-export type DBRLBackingDb = 'redis' | 'sqlite' | 'auto';
+export type DBRLBackingDb = "redis" | "sqlite" | "auto";
 
 /**
  * Data structure stored in the rate limit store.
@@ -72,6 +72,7 @@ export type PathRateLimitConfig = {
  * Configuration options for the DB-backed rate limiter plugin.
  */
 export type DBRLOptions = {
+  redisClient?: Bun.RedisClient;
   /** Plugin scope: 'global' or 'scoped' (Default: 'scoped') */
   as: DBRLScope;
   /** HTTP methods to rate limit (Default: all except GET) */
