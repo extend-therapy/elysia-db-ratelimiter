@@ -1,10 +1,16 @@
 {
   "name": "@extend-therapy/elysia-db-ratelimiter",
-  "module": "index.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/extend-therapy/elysia-db-ratelimiter.git"
+  },
+  "module": "dist/index.js",
   "type": "module",
   "version": "1.0.0",
   "author": "Eli Selkin <eliselkin@extendtherapy.com>",
   "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "devDependencies": {
     "@types/bun": "latest"
   },
