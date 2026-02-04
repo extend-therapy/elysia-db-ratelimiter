@@ -12,4 +12,5 @@ export const defaultOptions: Partial<DBRLOptions> = {
   limit: 10, // 10 requests per minute
   window: 60 * 1000, // 1 minute
   failOpen: true,
+  whitelistMode: false,
 };

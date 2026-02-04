@@ -2,6 +2,9 @@
   "name": "@extend-therapy/elysia-db-ratelimiter",
   "module": "index.ts",
   "type": "module",
+  "version": "1.0.0",
+  "author": "Eli Selkin <eliselkin@extendtherapy.com>",
+  "license": "MIT",
   "devDependencies": {
     "@types/bun": "latest"
   },

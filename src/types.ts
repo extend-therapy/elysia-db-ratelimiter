@@ -107,8 +107,15 @@ export type DBRLOptions = {
    * If undefined, rate limiting applies to all routes according to 'methods'.
    */
   routes?: (string | PathRateLimitConfig)[];
-  /**
-   * Whether to allow the request if the rate limiter encounters an internal error (Default: true).
+    /**
+     * Whether to treat the 'routes' array as a strict whitelist.
+     * If true, only routes listed in 'routes' will be rate limited.
+     * If false (default), all routes are limited, using 'routes' for specific overrides.
+     */
+    whitelistMode?: boolean;
+    /**
+     * Whether to allow the request if the rate limiter encounters an internal error (Default: true).
+
    * Set to false for a more strict security posture.
    */
   failOpen?: boolean;

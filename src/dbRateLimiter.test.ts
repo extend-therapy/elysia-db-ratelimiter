@@ -211,6 +211,7 @@ describe('dbRateLimiter', () => {
             window: 1000,
             rateLimitStore: store,
             routes: ['/limited'],
+            whitelistMode: true,
             as: 'scoped',
             methods: ['GET'],
             pattern: 'IP',
@@ -233,6 +234,74 @@ describe('dbRateLimiter', () => {
         })
       );
       expect(res2.status).toBe(200);
+    });
+
+    it('should NOT respect routes whitelist if whitelistMode is false', async () => {
+      const store = new SqliteRateLimitStore(':memory:');
+      const app = new Elysia()
+        .use(
+          dbRateLimiter({
+            limit: 0, // Block everything
+            window: 1000,
+            rateLimitStore: store,
+            routes: ['/limited'], // only /limited is "listed"
+            whitelistMode: false, // but whitelistMode is false, so /open should still be blocked
+            as: 'scoped',
+            methods: ['GET'],
+            pattern: 'IP',
+            backingDb: 'sqlite'
+          })
+        )
+        .get('/limited', () => 'limited')
+        .get('/open', () => 'open');
+
+      const res1 = await app.handle(
+        new Request('http://localhost/limited', {
+          headers: { 'x-forwarded-for': '127.0.0.1' }
+        })
+      );
+      expect(res1.status).toBe(429);
+
+      const res2 = await app.handle(
+        new Request('http://localhost/open', {
+          headers: { 'x-forwarded-for': '127.0.0.1' }
+        })
+      );
+      expect(res2.status).toBe(429); // Should be blocked because whitelistMode is false
+    });
+
+    it('should respect routes whitelist if whitelistMode is true', async () => {
+      const store = new SqliteRateLimitStore(':memory:');
+      const app = new Elysia()
+        .use(
+          dbRateLimiter({
+            limit: 0, // Block everything
+            window: 1000,
+            rateLimitStore: store,
+            routes: ['/limited'],
+            whitelistMode: true,
+            as: 'scoped',
+            methods: ['GET'],
+            pattern: 'IP',
+            backingDb: 'sqlite'
+          })
+        )
+        .get('/limited', () => 'limited')
+        .get('/open', () => 'open');
+
+      const res1 = await app.handle(
+        new Request('http://localhost/limited', {
+          headers: { 'x-forwarded-for': '127.0.0.1' }
+        })
+      );
+      expect(res1.status).toBe(429);
+
+      const res2 = await app.handle(
+        new Request('http://localhost/open', {
+          headers: { 'x-forwarded-for': '127.0.0.1' }
+        })
+      );
+      expect(res2.status).toBe(200); // Should be OK because whitelistMode is true
     });
 
     it('should respect per-route config in unified routes array', async () => {

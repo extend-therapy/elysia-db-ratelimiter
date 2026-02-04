@@ -24,7 +24,9 @@ export const dbRateLimitHandler = (options: DBRLOptions) => {
         typeof r === 'string' ? r === path : r.path === path
       );
       if (!match) {
-        shouldLimit = false;
+        if (options.whitelistMode) {
+          shouldLimit = false;
+        }
       } else if (typeof match !== 'string') {
         currentLimit = match.limit;
         currentWindow = match.window;
