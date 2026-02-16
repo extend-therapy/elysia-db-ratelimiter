@@ -1,8 +1,9 @@
-import type { Context } from 'elysia';
-import { InternalServerError } from 'elysia';
-import { getIP } from 'elysia-ip';
-import type { Logger } from 'pino';
-import type { DBRLOptions } from './types';
+import type { Context } from "elysia";
+import { InternalServerError } from "elysia";
+import { getIP } from "elysia-ip";
+import type { Logger } from "pino";
+import { dbRateLimitDecrypt, dbRateLimitEncrypt } from "./dbRateLimitEncrypt";
+import type { DBRLOptions } from "./types";
 
 export const dbRateLimitHandler = (options: DBRLOptions) => {
   return async ({
@@ -20,14 +21,14 @@ export const dbRateLimitHandler = (options: DBRLOptions) => {
     let shouldLimit = true;
 
     if (options.routes) {
-      const match = options.routes.find(r =>
-        typeof r === 'string' ? r === path : r.path === path
+      const match = options.routes.find((r) =>
+        typeof r === "string" ? r === path : r.path === path,
       );
       if (!match) {
         if (options.whitelistMode) {
           shouldLimit = false;
         }
-      } else if (typeof match !== 'string') {
+      } else if (typeof match !== "string") {
         currentLimit = match.limit;
         currentWindow = match.window;
         if (match.pattern) currentPattern = match.pattern;
@@ -40,7 +41,7 @@ export const dbRateLimitHandler = (options: DBRLOptions) => {
 
     // pathConfigs takes final precedence if present
     if (options.pathConfigs) {
-      const pathConfig = options.pathConfigs.find(c => c.path === path);
+      const pathConfig = options.pathConfigs.find((c) => c.path === path);
       if (pathConfig) {
         currentLimit = pathConfig.limit;
         currentWindow = pathConfig.window;
@@ -48,53 +49,69 @@ export const dbRateLimitHandler = (options: DBRLOptions) => {
       }
     }
 
-    let baseId = cookie.rateLimitCookie?.value;
+    let baseId = cookie.rateLimitCookie?.value as string | undefined;
+    let baseIdEnc: string | undefined;
 
     if (!baseId) {
       const ip = getIP(request.headers);
       if (!ip) {
         // In test environment, use a default IP address to avoid log noise
-        const isTest = process.env.NODE_ENV === 'test' || process.env.isTest === 'true';
+        const isTest = process.env.NODE_ENV === "test" || process.env.isTest === "true";
 
         if (isTest) {
-          baseId = '127.0.0.1';
-          log.debug('Using default test IP for rate limiting');
+          baseId = "127.0.0.1";
+          log.debug("Using default test IP for rate limiting");
         } else {
-          const errorMsg = 'Could not get IP address for rate limiting';
+          const errorMsg = "Could not get IP address for rate limiting";
           log.error(errorMsg);
-          return true;
+          if (options.failOpen === false) {
+            throw new InternalServerError(errorMsg);
+          }
+          // create a random id for their cookie and we'll try to use that if it's there
+          baseId = Bun.randomUUIDv7("base64url");
         }
       } else {
         baseId = ip;
       }
-
-      if (cookie.rateLimitCookie && baseId) {
-        cookie.rateLimitCookie.value = baseId;
+    } else {
+      try {
+        baseId = await dbRateLimitDecrypt(baseId);
+      } catch (err) {
+        log.warn(`Failed to decrypt baseId from cookie: ${err}`);
+        if (options.failOpen === false) {
+          throw new InternalServerError("Failed to decrypt rate limit identifier");
+        }
+        // If decryption fails, we'll try to get IP as a fallback
+        const ip = getIP(request.headers);
+        baseId = ip || baseId; // Fallback to raw cookie value if IP unavailable
       }
     }
 
+    if (cookie.rateLimitCookie && baseId) {
+      cookie.rateLimitCookie.value = await dbRateLimitEncrypt(baseId);
+    }
+
     let finalRateLimitId: string;
-    const safeBaseId = baseId as string;
     switch (currentPattern) {
-      case 'IP':
-        finalRateLimitId = safeBaseId;
+      case "IP":
+        finalRateLimitId = baseId;
         break;
-      case 'Route':
+      case "Route":
         finalRateLimitId = path;
         break;
-      case 'IPRouteNoParams':
-        finalRateLimitId = `${safeBaseId}:${path}`;
+      case "IPRouteNoParams":
+        finalRateLimitId = `${baseId}:${path}`;
         break;
-      case 'IPFullRoute':
+      case "IPFullRoute":
       default: {
         const queryStr = new URLSearchParams(query as Record<string, string>).toString();
-        finalRateLimitId = `${safeBaseId}:${path}${queryStr ? '?' + queryStr : ''}`;
+        finalRateLimitId = `${baseId}:${path}${queryStr ? "?" + queryStr : ""}`;
         break;
       }
     }
 
     if (!options.rateLimitStore) {
-      const errorMsg = 'No rate limit store provided';
+      const errorMsg = "No rate limit store provided";
       log.error(errorMsg);
       if (options.failOpen === false) {
         throw new InternalServerError(errorMsg);
@@ -108,7 +125,7 @@ export const dbRateLimitHandler = (options: DBRLOptions) => {
     } catch (e) {
       log.error(`Rate limit store get error: ${e}`);
       if (options.failOpen === false) {
-        throw new InternalServerError('Rate limit service unavailable');
+        throw new InternalServerError("Rate limit service unavailable");
       }
       return;
     }
@@ -120,7 +137,7 @@ export const dbRateLimitHandler = (options: DBRLOptions) => {
     if (count >= currentLimit) {
       log.warn(`Rate limit exceeded for ${finalRateLimitId}`);
       set.status = options.status || 429;
-      return options.message || 'Too many requests';
+      return options.message || "Too many requests";
     }
 
     try {
@@ -128,14 +145,14 @@ export const dbRateLimitHandler = (options: DBRLOptions) => {
         finalRateLimitId,
         {
           count: count + 1,
-          resetTime: resetTime
+          resetTime: resetTime,
         },
-        Math.ceil((resetTime - now) / 1000)
+        Math.ceil((resetTime - now) / 1000),
       );
     } catch (e) {
       log.error(`Rate limit store set error: ${e}`);
       if (options.failOpen === false) {
-        throw new InternalServerError('Rate limit service unavailable');
+        throw new InternalServerError("Rate limit service unavailable");
       }
       return;
     }
