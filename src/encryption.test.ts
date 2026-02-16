@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "bun:test";
+import { beforeEach, describe, expect, it, test } from "bun:test";
 import { dbRateLimitDecrypt, dbRateLimitEncrypt, resetKey } from "./dbRateLimitEncrypt";
 
 describe("dbRateLimitEncrypt", () => {
@@ -30,17 +30,19 @@ describe("dbRateLimitEncrypt", () => {
     expect(await dbRateLimitDecrypt(encrypted2)).toBe(original);
   });
 
-  it("should fail to decrypt tampered data", async () => {
+  test("should fail to decrypt tampered data", async () => {
     process.env.DB_RATE_LIMIT_KEY = TEST_KEY;
     const original = "127.0.0.1";
     const encrypted = await dbRateLimitEncrypt(original);
 
     // Decrypt the base64, flip a bit in the ciphertext, re-encode
     const combined = Buffer.from(encrypted, "base64");
-    combined[combined.length - 1] ^= 0xff;
-    const tampered = combined.toString("base64");
+    if (combined.length > 0 && combined[combined.length - 1] !== undefined) {
+      combined[combined.length - 1]! ^= 0xff;
+      const tampered = combined.toString("base64");
 
-    await expect(dbRateLimitDecrypt(tampered)).rejects.toThrow();
+      await expect(dbRateLimitDecrypt(tampered)).rejects.toThrow();
+    }
   });
 
   it("should use a fallback key if DB_RATE_LIMIT_KEY is missing", async () => {

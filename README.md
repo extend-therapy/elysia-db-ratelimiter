@@ -76,6 +76,14 @@ const app = new Elysia()
 | `seed` | `string` | `undefined` | Optional seed for ID generation. |
 | `loggerOptions` | `LoggerOptions` | `undefined` | Custom Pino logger configuration. |
 
+## IP Privacy & Encryption
+
+The plugin uses a cookie-based identification system to track rate limits. To protect user privacy:
+
+- **Encrypted Identifiers**: IP addresses stored in the `rateLimitCookie` are encrypted using AES-256-GCM.
+- **Environment Variable**: Set `DB_RATE_LIMIT_KEY` to a 256-bit (32 byte) base64 encoded string to persist encryption across server restarts.
+- **Security**: If `DB_RATE_LIMIT_KEY` is not provided, the plugin generates a random transient key. This ensures security but means all existing rate limit cookies will be invalidated whenever the server restarts.
+
 ## Identification Patterns (`pattern`)
 
 The `pattern` option determines how the plugin tracks uniqueness:

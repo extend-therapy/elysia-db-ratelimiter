@@ -77,12 +77,9 @@ export const dbRateLimitHandler = (options: DBRLOptions) => {
       try {
         baseId = await dbRateLimitDecrypt(baseId);
       } catch (err) {
-        log.warn(`Failed to decrypt baseId from cookie: ${err}`);
-        if (options.failOpen === false) {
-          throw new InternalServerError("Failed to decrypt rate limit identifier");
-        }
         // If decryption fails, we'll try to get IP as a fallback
         const ip = getIP(request.headers);
+        log.warn(`Failed to decrypt baseId from cookie from ${baseId} for ${ip}`);
         baseId = ip || baseId; // Fallback to raw cookie value if IP unavailable
       }
     }
