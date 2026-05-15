@@ -9,7 +9,7 @@
     "registry": "https://npm.pkg.github.com"
   },
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": "Eli Selkin <eli@extendtherapy.com>",
   "license": "MIT",
   "main": "dist/index.js",
