@@ -1,4 +1,4 @@
-import type { RateLimitStore, RateLimitStoreValue } from '../types';
+import type { RateLimitStore, RateLimitStoreValue } from "../types";
 
 export class RedisRateLimitStore implements RateLimitStore<Bun.RedisClient> {
   constructor(public client: Bun.RedisClient) {}
@@ -15,7 +15,7 @@ export class RedisRateLimitStore implements RateLimitStore<Bun.RedisClient> {
 
   async set(key: string, value: RateLimitStoreValue, ttlSeconds: number): Promise<void> {
     if (!this.client) return;
-    await this.client.set(`rl:${key}`, JSON.stringify(value), 'EX', ttlSeconds);
+    await this.client.set(`rl:${key}`, JSON.stringify(value), "EX", ttlSeconds);
   }
 
   /**
@@ -23,7 +23,7 @@ export class RedisRateLimitStore implements RateLimitStore<Bun.RedisClient> {
    */
   async reset(): Promise<void> {
     if (!this.client) return;
-    const keys = await this.client.keys('rl:*');
+    const keys = await this.client.keys("rl:*");
     if (keys && keys.length > 0) {
       await this.client.del(...keys);
     }

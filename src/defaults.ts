@@ -13,4 +13,5 @@ export const defaultOptions: Partial<DBRLOptions> = {
   window: 60 * 1000, // 1 minute
   failOpen: true,
   whitelistMode: false,
+  cookieObfuscation: "hash",
 };

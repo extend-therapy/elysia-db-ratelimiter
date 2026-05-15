@@ -1,67 +1,96 @@
-import { beforeEach, describe, expect, it, test } from "bun:test";
-import { dbRateLimitDecrypt, dbRateLimitEncrypt, resetKey } from "./dbRateLimitEncrypt";
+import { beforeEach, describe, expect, it } from "bun:test";
+import {
+  dbRateLimitHash,
+  isValidBase64,
+  processCookieValue,
+  resetKey,
+} from "./dbRateLimitEncrypt";
 
 describe("dbRateLimitEncrypt", () => {
-  const TEST_KEY = Buffer.alloc(32, 1).toString("base64"); // 32 bytes of 0x01
-
   beforeEach(() => {
     resetKey();
   });
 
-  it("should encrypt and decrypt a value correctly", async () => {
-    process.env.DB_RATE_LIMIT_KEY = TEST_KEY;
-    const original = "127.0.0.1";
-    const encrypted = await dbRateLimitEncrypt(original);
-    expect(typeof encrypted).toBe("string");
-    expect(encrypted.length).toBeGreaterThan(original.length);
+  describe("dbRateLimitHash", () => {
+    it("should produce consistent hashes for the same input", async () => {
+      Bun.env.DB_RATE_LIMIT_HASH_PADDING = "test-padding-value";
+      const value = "127.0.0.1";
+      const hash1 = await dbRateLimitHash(value);
+      const hash2 = await dbRateLimitHash(value);
+      expect(hash1).toBe(hash2);
+      expect(typeof hash1).toBe("string");
+      expect(hash1.length).toBeGreaterThan(0);
+      delete Bun.env.DB_RATE_LIMIT_HASH_PADDING;
+    });
 
-    const decrypted = await dbRateLimitDecrypt(encrypted);
-    expect(decrypted).toBe(original);
+    it("should produce different hashes for different inputs", async () => {
+      Bun.env.DB_RATE_LIMIT_HASH_PADDING = "test-padding-value";
+      const hash1 = await dbRateLimitHash("127.0.0.1");
+      const hash2 = await dbRateLimitHash("127.0.0.2");
+      expect(hash1).not.toBe(hash2);
+      delete Bun.env.DB_RATE_LIMIT_HASH_PADDING;
+    });
+
+    it("should use DB_RATE_LIMIT_HASH_PADDING when provided", async () => {
+      Bun.env.DB_RATE_LIMIT_HASH_PADDING = "my-secret-padding";
+      const value = "127.0.0.1";
+      const hash = await dbRateLimitHash(value);
+
+      // Reset and use same padding again
+      resetKey();
+      Bun.env.DB_RATE_LIMIT_HASH_PADDING = "my-secret-padding";
+      const hash2 = await dbRateLimitHash(value);
+      expect(hash).toBe(hash2);
+
+      // Different padding should produce different hash
+      resetKey();
+      Bun.env.DB_RATE_LIMIT_HASH_PADDING = "different-padding";
+      const hash3 = await dbRateLimitHash(value);
+      expect(hash).not.toBe(hash3);
+
+      delete Bun.env.DB_RATE_LIMIT_HASH_PADDING;
+    });
   });
 
-  it("should produce different ciphertexts for the same plaintext (IV randomness)", async () => {
-    process.env.DB_RATE_LIMIT_KEY = TEST_KEY;
-    const original = "127.0.0.1";
-    const encrypted1 = await dbRateLimitEncrypt(original);
-    const encrypted2 = await dbRateLimitEncrypt(original);
-    expect(encrypted1).not.toBe(encrypted2);
+  describe("processCookieValue", () => {
+    it("should return base64 encoded value for 'none' strategy", async () => {
+      const value = "127.0.0.1";
+      const result = await processCookieValue(value, "none");
+      expect(result).toBe(Buffer.from(value).toString("base64"));
+    });
 
-    expect(await dbRateLimitDecrypt(encrypted1)).toBe(original);
-    expect(await dbRateLimitDecrypt(encrypted2)).toBe(original);
+    it("should hash value for 'hash' strategy", async () => {
+      Bun.env.DB_RATE_LIMIT_HASH_PADDING = "test-padding";
+      const value = "127.0.0.1";
+      const result = await processCookieValue(value, "hash");
+      expect(result).not.toBe(value);
+      // Hash should be consistent
+      const result2 = await processCookieValue(value, "hash");
+      expect(result).toBe(result2);
+      delete Bun.env.DB_RATE_LIMIT_HASH_PADDING;
+    });
   });
 
-  test("should fail to decrypt tampered data", async () => {
-    process.env.DB_RATE_LIMIT_KEY = TEST_KEY;
-    const original = "127.0.0.1";
-    const encrypted = await dbRateLimitEncrypt(original);
+  describe("isValidBase64", () => {
+    it("should return true for valid base64 strings", () => {
+      const value = "127.0.0.1";
+      const encoded = Buffer.from(value).toString("base64");
+      expect(isValidBase64(encoded)).toBe(true);
+    });
 
-    // Decrypt the base64, flip a bit in the ciphertext, re-encode
-    const combined = Buffer.from(encrypted, "base64");
-    if (combined.length > 0 && combined[combined.length - 1] !== undefined) {
-      combined[combined.length - 1]! ^= 0xff;
-      const tampered = combined.toString("base64");
+    it("should return false for invalid base64 strings", () => {
+      expect(isValidBase64("not-valid-base64!!!")).toBe(false);
+      expect(isValidBase64("hello world")).toBe(false);
+    });
 
-      await expect(dbRateLimitDecrypt(tampered)).rejects.toThrow();
-    }
-  });
+    it("should return true for empty base64 string", () => {
+      expect(isValidBase64("")).toBe(true);
+    });
 
-  it("should use a fallback key if DB_RATE_LIMIT_KEY is missing", async () => {
-    // Mocking console.warn to verify warning is logged
-    const originalWarn = console.warn;
-    let warned = false;
-    console.warn = (...args) => {
-      if (args[0]?.includes("DB_RATE_LIMIT_KEY")) warned = true;
-    };
-
-    const oldKey = process.env.DB_RATE_LIMIT_KEY;
-    delete process.env.DB_RATE_LIMIT_KEY;
-
-    const original = "test-value";
-    const encrypted = await dbRateLimitEncrypt(original);
-    expect(warned).toBe(true);
-    expect(await dbRateLimitDecrypt(encrypted)).toBe(original);
-
-    console.warn = originalWarn;
-    process.env.DB_RATE_LIMIT_KEY = oldKey;
+    it("should return true for base64 encoded binary data", () => {
+      const binary = Buffer.from([0x00, 0x01, 0x02, 0x03]);
+      const encoded = binary.toString("base64");
+      expect(isValidBase64(encoded)).toBe(true);
+    });
   });
 });

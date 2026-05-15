@@ -29,6 +29,13 @@ export type DBRLPattern = "IPFullRoute" | "IPRouteNoParams" | "IP" | "Route";
 export type DBRLBackingDb = "redis" | "sqlite" | "auto";
 
 /**
+ * Strategy for cookie value obfuscation (encryption/hashing).
+ * - 'hash': Hash the cookie value using sha512-256 (one-way, cannot retrieve original value)
+ * - 'none': Store cookie value as base64 encoded IP (reversible, not recommended for production)
+ */
+export type DBRLCookieObfuscation = "hash" | "none";
+
+/**
  * Data structure stored in the rate limit store.
  */
 export type RateLimitStoreValue = {
@@ -107,13 +114,24 @@ export type DBRLOptions = {
    * If undefined, rate limiting applies to all routes according to 'methods'.
    */
   routes?: (string | PathRateLimitConfig)[];
-    /**
-     * Whether to treat the 'routes' array as a strict whitelist.
-     * If true, only routes listed in 'routes' will be rate limited.
-     * If false (default), all routes are limited, using 'routes' for specific overrides.
-     */
-    whitelistMode?: boolean;
-    /**
+  /**
+   * Whether to treat the 'routes' array as a strict whitelist.
+   * If true, only routes listed in 'routes' will be rate limited.
+   * If false (default), all routes are limited, using 'routes' for specific overrides.
+   */
+  whitelistMode?: boolean;
+  /**
+   * Cookie obfuscation strategy (Default: 'hash').
+   * - 'hash': Hash using sha512-256 (one-way, cannot retrieve original value)
+   * - 'none': No obfuscation (base64 encoded IP, not recommended for production)
+   */
+  cookieObfuscation?: DBRLCookieObfuscation;
+  /**
+   * Whether to verify the cookie value matches the current IP address (Default: false for 'hash', true for 'none').
+   * When true and the cookie value doesn't match the IP, the rate limit count is transferred to a new cookie.
+   */
+  alwaysCheckCookieValue?: boolean;
+  /**
      * Whether to allow the request if the rate limiter encounters an internal error (Default: true).
 
    * Set to false for a more strict security posture.

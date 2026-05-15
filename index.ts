@@ -1,5 +1,6 @@
 export * from './src/dbRateLimiter';
 export * from './src/dbRateLimitHandler';
+export * from './src/dbRateLimitEncrypt';
 export * from './src/defaults';
 export * from './src/helpers/redisStore';
 export * from './src/helpers/sqliteStore';

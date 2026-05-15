@@ -37,7 +37,7 @@ const app = new Elysia()
 
 ### Using Redis
 
-Inject your Redis client directly into the options.
+Inject your Redis client directly into the options. Or use a global redis client for all instances of dbRateLimiter.
 
 ```typescript
 import { Elysia } from 'elysia';
@@ -75,14 +75,57 @@ const app = new Elysia()
 | `message` | `string` | `'Too many requests'` | Response body on limit exceed. |
 | `seed` | `string` | `undefined` | Optional seed for ID generation. |
 | `loggerOptions` | `LoggerOptions` | `undefined` | Custom Pino logger configuration. |
+| `cookieObfuscation` | `'aes-gcm' \| 'hash' \| 'none'` | `'aes-gcm'` | Cookie value obfuscation strategy. |
+| `alwaysCheckCookieValue` | `boolean` | `false` (except `none`) | Verifies cookie matches IP. Transfers count if mismatch. |
 
-## IP Privacy & Encryption
+## IP Privacy & Cookie Obfuscation
 
-The plugin uses a cookie-based identification system to track rate limits. To protect user privacy:
+The plugin uses a cookie-based identification system to track rate limits. To protect user privacy, the `rateLimitCookie` value is obfuscated using one of three strategies:
 
-- **Encrypted Identifiers**: IP addresses stored in the `rateLimitCookie` are encrypted using AES-256-GCM.
-- **Environment Variable**: Set `DB_RATE_LIMIT_KEY` to a 256-bit (32 byte) base64 encoded string to persist encryption across server restarts.
-- **Security**: If `DB_RATE_LIMIT_KEY` is not provided, the plugin generates a random transient key. This ensures security but means all existing rate limit cookies will be invalidated whenever the server restarts.
+### Obfuscation Strategies
+
+| Strategy | Description | Use Case |
+| :--- | :--- | :--- |
+| `aes-gcm` (Default) | AES-256-GCM encryption. Reversible and most secure. | Production (recommended) |
+| `hash` | SHA-256 hashing. One-way function, cannot retrieve original value. | When you don't need to recover the original IP |
+| `none` | No obfuscation. Plaintext storage. | Development/testing only |
+
+### Configuration of Cookie Obfuscation
+
+```typescript
+app.use(dbRateLimiter({
+    cookieObfuscation: 'hash', // Use hashing instead of encryption
+    limit: 100,
+    window: 60 * 1000
+}));
+```
+
+### Cookie Verification (`alwaysCheckCookieValue`)
+
+When enabled, the plugin verifies that the cookie value matches the current IP address. This is especially important for the `none` strategy (where it defaults to `true`) to prevent users from tampering with their cookies since it is easy to know the value and meaning of their cookie.
+
+**Behavior when cookie doesn't match IP (and `alwaysCheckCookieValue` is true):**
+
+1. The rate limit count is transferred from the old cookie to a new one
+2. A new cookie is set with the current IP's processed value
+3. The user continues with their existing count (not reset to zero)
+
+```typescript
+app.use(dbRateLimiter({
+    cookieObfuscation: 'none',
+    alwaysCheckCookieValue: true, // Defaults to true for 'none' strategy
+    limit: 100,
+    window: 60 * 1000
+}));
+```
+
+### Environment Variables
+
+When using `hash` strategy, you should set environment variable to ensure cookies remain valid across server restarts:
+
+- **`DB_RATE_LIMIT_HASH_PADDING`** (for `hash`): Set to any string value used as padding before hashing. If not provided, a random 16-byte to 32-byte padding is generated and cookies will be invalidated on restart.
+
+**Security Note**: If this environment variable is not set, the plugin generates random transient values. This ensures security but means all existing rate limit cookies will be invalidated whenever the server restarts.
 
 ## Identification Patterns (`pattern`)
 

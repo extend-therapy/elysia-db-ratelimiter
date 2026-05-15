@@ -2,7 +2,7 @@ import type { Context } from "elysia";
 import { InternalServerError } from "elysia";
 import { getIP } from "elysia-ip";
 import type { Logger } from "pino";
-import { dbRateLimitDecrypt, dbRateLimitEncrypt } from "./dbRateLimitEncrypt";
+import { isValidBase64, processCookieValue, verifyCookieValue } from "./dbRateLimitEncrypt";
 import type { DBRLOptions } from "./types";
 
 export const dbRateLimitHandler = (options: DBRLOptions) => {
@@ -15,6 +15,9 @@ export const dbRateLimitHandler = (options: DBRLOptions) => {
     query,
     ..._rest
   }: Context & { log: Logger }) => {
+    const cookieObfuscation = options.cookieObfuscation || "hash";
+    // Default to true for 'none' strategy, false for others if alwaysCheckCookieValue is not explicitly set
+    const alwaysCheckCookieValue = options.alwaysCheckCookieValue ?? cookieObfuscation === "none";
     let currentLimit = options.limit;
     let currentWindow = options.window;
     let currentPattern = options.pattern;
@@ -49,60 +52,152 @@ export const dbRateLimitHandler = (options: DBRLOptions) => {
       }
     }
 
-    let baseId = cookie.rateLimitCookie?.value as string | undefined;
-    let baseIdEnc: string | undefined;
+    let cookieValue = cookie.rateLimitCookie?.value as string | undefined;
+    let oldCookieValue: string | undefined;
 
-    if (!baseId) {
+    // Helper function to get IP lazily
+    const getClientIP = (): string => {
       const ip = getIP(request.headers);
-      if (!ip) {
-        // In test environment, use a default IP address to avoid log noise
-        const isTest = process.env.NODE_ENV === "test" || process.env.isTest === "true";
+      if (ip) return ip;
 
-        if (isTest) {
-          baseId = "127.0.0.1";
-          log.debug("Using default test IP for rate limiting");
-        } else {
-          const errorMsg = "Could not get IP address for rate limiting";
-          log.error(errorMsg);
-          if (options.failOpen === false) {
-            throw new InternalServerError(errorMsg);
+      // In test environment, use a default IP address to avoid log noise
+      const isTest = Bun.env.NODE_ENV === "test" || Bun.env.isTest === "true";
+      if (isTest) {
+        log.warn("Using default test IP for rate limiting");
+        return "127.0.0.1";
+      }
+
+      const errorMsg = "Could not get IP address for rate limiting";
+      log.error(errorMsg);
+      if (options.failOpen === false) {
+        throw new InternalServerError(errorMsg);
+      }
+      // create a random id for their cookie and we'll try to use that if it's there
+      return Bun.randomUUIDv7("base64url").replaceAll("-", "");
+    };
+
+    // The rate limit identifier is always the cookie value itself
+    // For 'hash': the cookie contains the hash, which IS the identifier
+    // For 'none': the cookie contains base64(IP), which IS the identifier
+    let rateLimitIdentifier: string;
+
+    if (!cookieValue) {
+      // No cookie exists - get IP and create new identifier
+      const ip = getClientIP();
+      rateLimitIdentifier = await processCookieValue(ip, cookieObfuscation);
+    } else {
+      // Cookie exists - validate it and use it directly as the identifier
+      let isValid = false;
+
+      if (cookieObfuscation === "hash") {
+        // For hash, verify by hashing current IP and comparing (if alwaysCheckCookieValue)
+        // Otherwise trust the cookie value
+        if (alwaysCheckCookieValue) {
+          const ip = getClientIP();
+          isValid = await verifyCookieValue(cookieValue, ip, cookieObfuscation);
+          if (!isValid) {
+            oldCookieValue = cookieValue;
+            rateLimitIdentifier = await processCookieValue(ip, cookieObfuscation);
+          } else {
+            rateLimitIdentifier = cookieValue;
           }
-          // create a random id for their cookie and we'll try to use that if it's there
-          baseId = Bun.randomUUIDv7("base64url");
+        } else {
+          isValid = true;
+          rateLimitIdentifier = cookieValue;
         }
       } else {
-        baseId = ip;
+        // For 'none' obfuscation
+        // First validate it's valid base64
+        isValid = isValidBase64(cookieValue);
+
+        if (isValid) {
+          if (alwaysCheckCookieValue) {
+            const ip = getClientIP();
+            const expectedValue = await processCookieValue(ip, cookieObfuscation);
+            if (cookieValue !== expectedValue) {
+              oldCookieValue = cookieValue;
+              rateLimitIdentifier = expectedValue;
+            } else {
+              rateLimitIdentifier = cookieValue;
+            }
+          } else {
+            rateLimitIdentifier = cookieValue;
+          }
+        } else {
+          // Invalid base64 - treat as new cookie
+          oldCookieValue = cookieValue;
+          const ip = getClientIP();
+          rateLimitIdentifier = await processCookieValue(ip, cookieObfuscation);
+        }
       }
-    } else {
+    }
+
+    // Set the new cookie value (which is the rate limit identifier)
+    if (cookie.rateLimitCookie) {
+      cookie.rateLimitCookie.value = rateLimitIdentifier;
+    }
+
+    // If we have an old cookie value, transfer the rate limit to the new identifier
+    if (oldCookieValue && options.rateLimitStore) {
       try {
-        baseId = await dbRateLimitDecrypt(baseId);
-      } catch (err) {
-        // If decryption fails, we'll try to get IP as a fallback
-        const ip = getIP(request.headers);
-        log.warn(`Failed to decrypt baseId from cookie from ${baseId} for ${ip}`);
-        baseId = ip || baseId; // Fallback to raw cookie value if IP unavailable
+        const queryStr = new URLSearchParams(query as Record<string, string>).toString();
+
+        // Build the old rate limit ID (using old identifier)
+        const oldRateLimitId = `${oldCookieValue}:${path}${queryStr ? "?" + queryStr : ""}`;
+
+        const oldRateLimit = await options.rateLimitStore.get(oldRateLimitId);
+
+        if (oldRateLimit) {
+          // Build the new rate limit ID
+          let newRateLimitId: string;
+          switch (currentPattern) {
+            case "IP":
+              newRateLimitId = rateLimitIdentifier;
+              break;
+            case "Route":
+              newRateLimitId = path;
+              break;
+            case "IPRouteNoParams":
+              newRateLimitId = `${rateLimitIdentifier}:${path}`;
+              break;
+            case "IPFullRoute":
+            default:
+              newRateLimitId = `${rateLimitIdentifier}:${path}${queryStr ? "?" + queryStr : ""}`;
+          }
+
+          // Transfer the rate limit count and reset time
+          const now = Date.now();
+          await options.rateLimitStore.set(
+            newRateLimitId,
+            {
+              count: oldRateLimit.count,
+              resetTime: oldRateLimit.resetTime,
+            },
+            Math.ceil((oldRateLimit.resetTime - now) / 1000),
+          );
+          log.debug(`Transferred rate limit from ${oldCookieValue} to new identifier`);
+        }
+      } catch (e) {
+        log.warn(`Failed to transfer rate limit from old cookie: ${e}`);
       }
     }
 
-    if (cookie.rateLimitCookie && baseId) {
-      cookie.rateLimitCookie.value = await dbRateLimitEncrypt(baseId);
-    }
-
+    // Build the final rate limit ID using the consistent identifier
     let finalRateLimitId: string;
     switch (currentPattern) {
       case "IP":
-        finalRateLimitId = baseId;
+        finalRateLimitId = rateLimitIdentifier;
         break;
       case "Route":
         finalRateLimitId = path;
         break;
       case "IPRouteNoParams":
-        finalRateLimitId = `${baseId}:${path}`;
+        finalRateLimitId = `${rateLimitIdentifier}:${path}`;
         break;
       case "IPFullRoute":
       default: {
         const queryStr = new URLSearchParams(query as Record<string, string>).toString();
-        finalRateLimitId = `${baseId}:${path}${queryStr ? "?" + queryStr : ""}`;
+        finalRateLimitId = `${rateLimitIdentifier}:${path}${queryStr ? "?" + queryStr : ""}`;
         break;
       }
     }
