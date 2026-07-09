@@ -200,6 +200,13 @@ describe('dbRateLimiter', () => {
       );
       expect(res2.status).toBe(429);
       expect(await res2.text()).toBe('Too many requests');
+      // 429 exposes how long to wait (window is 5s) so clients can show it.
+      const retryAfter = Number(res2.headers.get('Retry-After'));
+      expect(retryAfter).toBeGreaterThan(0);
+      expect(retryAfter).toBeLessThanOrEqual(5);
+      expect(res2.headers.get('RateLimit-Limit')).toBe('1');
+      expect(res2.headers.get('RateLimit-Remaining')).toBe('0');
+      expect(res2.headers.get('RateLimit-Reset')).toBe(String(retryAfter));
     });
 
     it('should respect routes whitelist', async () => {
