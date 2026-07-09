@@ -228,6 +228,14 @@ export const dbRateLimitHandler = (options: DBRLOptions) => {
 
     if (count >= currentLimit) {
       log.warn(`Rate limit exceeded for ${finalRateLimitId}`);
+      // Tell the client how long to wait so it can show "try again in X".
+      // Retry-After is the standard header (seconds); RateLimit-* mirror the
+      // IETF draft. resetTime is when the current window ends.
+      const retryAfterSeconds = Math.max(0, Math.ceil((resetTime - now) / 1000));
+      set.headers["Retry-After"] = String(retryAfterSeconds);
+      set.headers["RateLimit-Limit"] = String(currentLimit);
+      set.headers["RateLimit-Remaining"] = "0";
+      set.headers["RateLimit-Reset"] = String(retryAfterSeconds);
       set.status = options.status || 429;
       return options.message || "Too many requests";
     }
