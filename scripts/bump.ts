@@ -45,7 +45,7 @@ const compare = (a: Semver, b: Semver) =>
   a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
 
 const pkgPath = new URL("../package.json", import.meta.url).pathname;
-const pkg = (await Bun.file(pkgPath).json()) as { version: string };
+const pkg = (await Bun.file(pkgPath).json()) as { name: string; version: string };
 
 const pkgVersion = parse(pkg.version);
 if (!pkgVersion) {
@@ -70,6 +70,66 @@ if (compare(base, pkgVersion) !== 0) {
   console.warn(
     `package.json (${pkg.version}) is behind tag v${base.join(".")}; bumping from the tag.`
   );
+}
+
+// Bumping past a release that never shipped orphans it: the tag stays, but no
+// registry ever serves that version. Confirm the current release landed first.
+//
+// Only npmjs is checked, and that is sufficient rather than partial: the publish
+// workflow pushes to GitHub Packages first and npmjs last, so a version on npmjs
+// means both registries have it. GitHub Packages cannot be checked here anyway --
+// its npm endpoint 401s without a token, and `bun run up` needs none.
+const baseVersion = base.join(".");
+const registry = "https://registry.npmjs.org";
+const encodedName = pkg.name.replace("/", "%2F");
+
+if (process.env.ALLOW_UNPUBLISHED === "1") {
+  console.warn(
+    `ALLOW_UNPUBLISHED=1: not checking whether ${pkg.name}@${baseVersion} was published.`
+  );
+} else {
+  let published: boolean;
+  try {
+    const response = await fetch(`${registry}/${encodedName}/${baseVersion}`, {
+      method: "HEAD",
+    });
+    if (response.status === 200) {
+      published = true;
+    } else if (response.status === 404) {
+      // Distinguish "this version never shipped" from "this package has never
+      // shipped anything", which is a legitimate first release.
+      const pkgResponse = await fetch(`${registry}/${encodedName}`, {
+        method: "HEAD",
+      });
+      if (pkgResponse.status === 404) {
+        console.warn(
+          `${pkg.name} has never been published; treating ${baseVersion} as a first release.`
+        );
+        published = true;
+      } else {
+        published = false;
+      }
+    } else {
+      throw new Error(`registry returned ${response.status}`);
+    }
+  } catch (e) {
+    console.error(
+      `Could not reach ${registry} to confirm ${pkg.name}@${baseVersion} was published.`
+    );
+    console.error(e instanceof Error ? e.message : String(e));
+    console.error("Re-run with ALLOW_UNPUBLISHED=1 to bump without checking.");
+    process.exit(1);
+  }
+
+  if (!published) {
+    console.error(
+      `${pkg.name}@${baseVersion} is tagged but was never published; bumping now would orphan it.\n` +
+        `Publish it from main, then re-run this:\n` +
+        `  gh workflow run publish.yml --ref main\n` +
+        `To abandon ${baseVersion} and bump anyway, re-run with ALLOW_UNPUBLISHED=1.`
+    );
+    process.exit(1);
+  }
 }
 
 const [major, minor, patch] = base;
