@@ -16,16 +16,26 @@ jobs:
       packages: write # GitHub Packages
       id-token: write # npmjs trusted publishing (OIDC) + provenance
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
 
-      # Trusted publishing needs npm >= 11.5.1. Don't rely on the npm that
-      # ships with the Node release.
-      - name: Upgrade npm
-        run: npm install -g npm@latest
+      # Trusted publishing needs npm >= 11.5.1, which Node 24 already bundles.
+      # Do NOT `npm install -g npm@latest` to get there: self-upgrading over the
+      # tool-cached npm prunes sigstore, and `npm publish --provenance` then dies
+      # with "Cannot find module 'sigstore'". Assert the floor instead.
+      - name: Verify npm supports trusted publishing
+        run: |
+          set -euo pipefail
+          required=11.5.1
+          installed="$(npm --version)"
+          if [ "$(printf '%s\n%s\n' "$required" "$installed" | sort -V | head -1)" != "$required" ]; then
+            echo "::error::npm $installed is below the $required required for trusted publishing."
+            exit 1
+          fi
+          echo "npm $installed satisfies >= $required"
 
       - run: bun install --frozen-lockfile
 

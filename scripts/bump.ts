@@ -11,6 +11,16 @@ if (!["major", "minor", "patch"].includes(kind)) {
   process.exit(1);
 }
 
+// The tag this creates is what CI publishes from, so it has to point at a
+// commit that is on main.
+const branch = (await $`git rev-parse --abbrev-ref HEAD`.text()).trim();
+if (branch !== "main") {
+  console.error(
+    `Releases are cut from main; currently on ${branch === "HEAD" ? "a detached HEAD" : branch}.`
+  );
+  process.exit(1);
+}
+
 const status = (await $`git status --porcelain`.text())
   .split("\n")
   .filter((line) => line && line.slice(3) !== "package.json");
