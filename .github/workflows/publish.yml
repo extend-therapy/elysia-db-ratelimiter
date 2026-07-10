@@ -1,4 +1,5 @@
-name: Publish to GitHub Packages
+name: Publish
+
 on:
   push:
     tags: ["v*"]
@@ -6,21 +7,75 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # GitHub Packages
+      id-token: write # npmjs trusted publishing (OIDC) + provenance
     steps:
       - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-          registry-url: "https://npm.pkg.github.com"
-          scope: "@extend-therapy"
+
+      # Trusted publishing needs npm >= 11.5.1. Don't rely on the npm that
+      # ships with the Node release.
+      - name: Upgrade npm
+        run: npm install -g npm@latest
+
       - run: bun install --frozen-lockfile
-      - name: Publish
-        run: npm publish
+
+      - name: Verify tag matches package.json version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          pkg_version="$(node -p "require('./package.json').version")"
+          tag_version="${GITHUB_REF_NAME#v}"
+          if [ "$pkg_version" != "$tag_version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $pkg_version. Use 'bun run up' so the bump, commit, and tag stay in sync."
+            exit 1
+          fi
+
+      - name: Build
+        run: bun run build
+
+      # Both publish steps pack the dist/ built above and pass --ignore-scripts,
+      # so they ship identical tarballs and prepublishOnly doesn't rebuild twice.
+      # Each step rewrites .npmrc because it is the highest-precedence npm config
+      # file, and a scoped package resolves its registry from `@scope:registry`
+      # rather than from `--registry`.
+
+      - name: Publish to npmjs.com
+        run: |
+          set -euo pipefail
+          # No _authToken line: npm exchanges the Actions OIDC token for a
+          # short-lived npmjs credential. A token here would pre-empt that.
+          printf '%s\n' '@extend-therapy:registry=https://registry.npmjs.org' > .npmrc
+          name="$(node -p "require('./package.json').name")"
+          version="$(node -p "require('./package.json').version")"
+          if [ -n "$(npm view "$name@$version" version 2>/dev/null || true)" ]; then
+            echo "$name@$version is already on npmjs.com — skipping."
+          else
+            npm publish --access public --provenance --ignore-scripts
+          fi
+
+      - name: Publish to GitHub Packages
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cat > .npmrc <<'EOF'
+          @extend-therapy:registry=https://npm.pkg.github.com
+          //npm.pkg.github.com/:_authToken=${NPM_AUTH_TOKEN}
+          EOF
+          name="$(node -p "require('./package.json').name")"
+          version="$(node -p "require('./package.json').version")"
+          if [ -n "$(npm view "$name@$version" version 2>/dev/null || true)" ]; then
+            echo "$name@$version is already on GitHub Packages — skipping."
+          else
+            npm publish --ignore-scripts
+          fi
