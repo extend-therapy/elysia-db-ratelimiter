@@ -58,20 +58,12 @@ jobs:
       # Each step rewrites .npmrc because it is the highest-precedence npm config
       # file, and a scoped package resolves its registry from `@scope:registry`
       # rather than from `--registry`.
-
-      - name: Publish to npmjs.com
-        run: |
-          set -euo pipefail
-          # No _authToken line: npm exchanges the Actions OIDC token for a
-          # short-lived npmjs credential. A token here would pre-empt that.
-          printf '%s\n' '@extend-therapy:registry=https://registry.npmjs.org' > .npmrc
-          name="$(node -p "require('./package.json').name")"
-          version="$(node -p "require('./package.json').version")"
-          if [ -n "$(npm view "$name@$version" version 2>/dev/null || true)" ]; then
-            echo "$name@$version is already on npmjs.com — skipping."
-          else
-            npm publish --access public --provenance --ignore-scripts
-          fi
+      #
+      # ORDER MATTERS. npmjs publishes LAST so that its (publicly readable)
+      # registry is a complete signal: a version on npmjs means GitHub Packages
+      # already succeeded. scripts/bump.ts relies on that to refuse to bump past
+      # a release that never shipped. GitHub Packages 401s without a token, so it
+      # cannot be the thing we check. Do not swap these.
 
       - name: Publish to GitHub Packages
         env:
@@ -88,4 +80,18 @@ jobs:
             echo "$name@$version is already on GitHub Packages — skipping."
           else
             npm publish --ignore-scripts
+          fi
+
+      - name: Publish to npmjs.com
+        run: |
+          set -euo pipefail
+          # No _authToken line: npm exchanges the Actions OIDC token for a
+          # short-lived npmjs credential. A token here would pre-empt that.
+          printf '%s\n' '@extend-therapy:registry=https://registry.npmjs.org' > .npmrc
+          name="$(node -p "require('./package.json').name")"
+          version="$(node -p "require('./package.json').version")"
+          if [ -n "$(npm view "$name@$version" version 2>/dev/null || true)" ]; then
+            echo "$name@$version is already on npmjs.com — skipping."
+          else
+            npm publish --access public --provenance --ignore-scripts
           fi
