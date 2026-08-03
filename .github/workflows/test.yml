@@ -1,0 +1,32 @@
+name: Test
+
+# This package had no CI at all: its only workflow is `publish`, which fires on
+# `v*` tags, so nothing ran on a pull request and a regression stayed invisible
+# until release. Job is named `test` to match the other repos in the workspace,
+# keeping the required-status-check context consistent (issues#86 / issues#82).
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Test
+        run: bun run test
