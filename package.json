@@ -13,6 +13,9 @@
   "types": "dist/types/index.d.ts",
   "devDependencies": {
     "@types/bun": "^1.4.0",
+    "elysia": "^1.4.29",
+    "elysia-ip": "^1.1.0",
+    "pino": "^10.3.1",
     "typescript": "^7.0.2"
   },
   "scripts": {
@@ -24,8 +27,8 @@
   },
   "peerDependencies": {
     "elysia": "^1.4.22",
-    "pino": "10.3.1",
-    "elysia-ip": "1.1.0"
+    "elysia-ip": "^1.1.0 || ^2.0.0",
+    "pino": "^10.3.1"
   },
   "files": [
     "dist/**/*",
