@@ -13,7 +13,7 @@
   "types": "dist/types/index.d.ts",
   "devDependencies": {
     "@types/bun": "^1.4.0",
-    "typescript": "^6"
+    "typescript": "^7.0.2"
   },
   "scripts": {
     "build": "rm -rf dist || true && bunx tsc",
