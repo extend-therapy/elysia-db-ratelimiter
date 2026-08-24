@@ -65,6 +65,21 @@ jobs:
       # a release that never shipped. GitHub Packages 401s without a token, so it
       # cannot be the thing we check. Do not swap these.
 
+      # Two supported lines ship from this repo: 0.1.x for Elysia 1.4 and 2.0.x for
+      # Elysia 2.0. `npm publish` writes the `latest` tag when `--tag` is omitted --
+      # it does NOT infer anything from the version -- so publishing 2.x without this
+      # would move `latest` to the 2.0 build and break every 1.4 consumer on their
+      # next install. Major >= 2 goes to `next`; everything else keeps `latest`.
+      - name: Resolve dist-tag
+        id: disttag
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          major="${version%%.*}"
+          if [ "$major" -ge 2 ]; then tag=next; else tag=latest; fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "$version -> dist-tag $tag"
+
       - name: Publish to GitHub Packages
         env:
           NPM_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -79,7 +94,7 @@ jobs:
           if [ -n "$(npm view "$name@$version" version 2>/dev/null || true)" ]; then
             echo "$name@$version is already on GitHub Packages — skipping."
           else
-            npm publish --ignore-scripts
+            npm publish --ignore-scripts --tag '${{ steps.disttag.outputs.tag }}'
           fi
 
       - name: Publish to npmjs.com
@@ -93,5 +108,5 @@ jobs:
           if [ -n "$(npm view "$name@$version" version 2>/dev/null || true)" ]; then
             echo "$name@$version is already on npmjs.com — skipping."
           else
-            npm publish --access public --provenance --ignore-scripts
+            npm publish --access public --provenance --ignore-scripts --tag '${{ steps.disttag.outputs.tag }}'
           fi

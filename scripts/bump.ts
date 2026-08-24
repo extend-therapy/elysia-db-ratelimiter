@@ -4,9 +4,9 @@ import { $ } from "bun";
 const arg = (process.argv[2] ?? "patch").toLowerCase();
 const kind = arg === "micro" ? "patch" : arg;
 
-if (!["major", "minor", "patch"].includes(kind)) {
+if (!["major", "minor", "patch", "beta"].includes(kind)) {
   console.error(
-    `Invalid argument: ${arg}. Use major | minor | patch (alias: micro).`
+    `Invalid argument: ${arg}. Use major | minor | patch | beta (alias: micro -> patch).`
   );
   process.exit(1);
 }
@@ -32,17 +32,37 @@ if (status.length > 0) {
   process.exit(1);
 }
 
-type Semver = [number, number, number];
+// [major, minor, patch, beta] where beta === null means a plain release.
+// The 2.0 line ships as prereleases (2.0.1-beta.N) because it targets an Elysia
+// that is itself a beta; the 0.1.x line stays plain.
+type Semver = [number, number, number, number | null];
 
 const parse = (value: string): Semver | null => {
-  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(value.trim());
+  const match = /^(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?$/.exec(value.trim());
   return match
-    ? [Number(match[1]), Number(match[2]), Number(match[3])]
+    ? [
+        Number(match[1]),
+        Number(match[2]),
+        Number(match[3]),
+        match[4] === undefined ? null : Number(match[4]),
+      ]
     : null;
 };
 
-const compare = (a: Semver, b: Semver) =>
-  a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+const format = (v: Semver) =>
+  `${v[0]}.${v[1]}.${v[2]}` + (v[3] === null ? "" : `-beta.${v[3]}`);
+
+const compare = (a: Semver, b: Semver) => {
+  const core = a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+  if (core !== 0) return core;
+  // Same core: a release outranks its own prereleases (2.0.1 > 2.0.1-beta.9),
+  // which is what stops a finalised version being treated as older than the
+  // betas that led to it.
+  if (a[3] === null && b[3] === null) return 0;
+  if (a[3] === null) return 1;
+  if (b[3] === null) return -1;
+  return a[3] - b[3];
+};
 
 const pkgPath = new URL("../package.json", import.meta.url).pathname;
 const pkg = (await Bun.file(pkgPath).json()) as { name: string; version: string };
@@ -61,14 +81,18 @@ await $`git fetch --tags --force`.quiet().nothrow();
 const tagVersions = (await $`git tag --list ${"v*"}`.text())
   .split("\n")
   .map((tag) => parse(tag.trim().slice(1)))
-  .filter((version): version is Semver => version !== null);
+  .filter((version): version is Semver => version !== null)
+  // Two release lines ship from this repo -- 0.1.x for Elysia 1.4 (`latest`) and
+  // 2.0.x for Elysia 2.0 (`next`) -- so "the highest tag" is the wrong base. On a
+  // 0.1.x checkout it would find v2.0.1 and bump the 1.4 line onto the 2.0 one.
+  .filter((version) => version[0] === pkgVersion[0]);
 
 let base = pkgVersion;
 for (const tag of tagVersions) if (compare(tag, base) > 0) base = tag;
 
 if (compare(base, pkgVersion) !== 0) {
   console.warn(
-    `package.json (${pkg.version}) is behind tag v${base.join(".")}; bumping from the tag.`
+    `package.json (${pkg.version}) is behind tag v${format(base)}; bumping from the tag.`
   );
 }
 
@@ -79,7 +103,7 @@ if (compare(base, pkgVersion) !== 0) {
 // workflow pushes to GitHub Packages first and npmjs last, so a version on npmjs
 // means both registries have it. GitHub Packages cannot be checked here anyway --
 // its npm endpoint 401s without a token, and `bun run up` needs none.
-const baseVersion = base.join(".");
+const baseVersion = format(base);
 const registry = "https://registry.npmjs.org";
 const encodedName = pkg.name.replace("/", "%2F");
 
@@ -132,13 +156,21 @@ if (process.env.ALLOW_UNPUBLISHED === "1") {
   }
 }
 
-const [major, minor, patch] = base;
+const [major, minor, patch, beta] = base;
+// `beta` walks the prerelease counter; `patch` on a prerelease finalises it
+// rather than skipping a patch, matching `npm version patch` on an x.y.z-beta.N.
 const next =
   kind === "major"
     ? `${major + 1}.0.0`
     : kind === "minor"
       ? `${major}.${minor + 1}.0`
-      : `${major}.${minor}.${patch + 1}`;
+      : kind === "beta"
+        ? beta === null
+          ? `${major}.${minor}.${patch + 1}-beta.1`
+          : `${major}.${minor}.${patch}-beta.${beta + 1}`
+        : beta === null
+          ? `${major}.${minor}.${patch + 1}`
+          : `${major}.${minor}.${patch}`;
 
 const tagExists =
   (await $`git rev-parse -q --verify ${`refs/tags/v${next}`}`.quiet().nothrow())

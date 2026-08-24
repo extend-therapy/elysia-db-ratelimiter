@@ -1,7 +1,7 @@
 import type { DBRLOptions } from "./types";
 
 export const defaultOptions: Partial<DBRLOptions> = {
-  as: "scoped",
+  as: "plugin",
   status: 429,
   message: "Too many requests",
   methods: ["POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],

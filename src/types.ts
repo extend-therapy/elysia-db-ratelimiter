@@ -1,10 +1,14 @@
 import type { LoggerOptions } from "pino";
 
 /**
- * Defines the scope of the rate limiter plugin.
- * 'global' applies to the entire app, 'scoped' applies to the current route group.
+ * Plugin scope, passed straight through to Elysia's `beforeHandle(scope, fn)`.
+ *
+ * **Renamed in 2.0:** was `"global" | "scoped"` on the 1.x line. Elysia 2.0
+ * dropped the `"scoped"` literal in favour of `"plugin"` and replaced the
+ * `{ as }` object form with a bare string, so this passes through unmapped
+ * rather than carrying a second spelling of the same concept.
  */
-export type DBRLScope = "global" | "scoped";
+export type DBRLScope = "global" | "plugin";
 
 /**
  * HTTP methods that the rate limiter will monitor.
@@ -80,7 +84,7 @@ export type PathRateLimitConfig = {
  */
 export type DBRLOptions = {
   redisClient?: Bun.RedisClient;
-  /** Plugin scope: 'global' or 'scoped' (Default: 'scoped') */
+  /** Plugin scope: 'global' or 'plugin' (Default: 'plugin') */
   as: DBRLScope;
   /** HTTP methods to rate limit (Default: all except GET) */
   methods: DBRLMethod[];

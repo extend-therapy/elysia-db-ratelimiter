@@ -145,7 +145,7 @@ describe('dbRateLimiter', () => {
             limit: 2,
             window: 1000,
             rateLimitStore: store,
-            as: 'scoped',
+            as: 'plugin',
             methods: ['GET'],
             pattern: 'IP',
             backingDb: 'sqlite'
@@ -176,7 +176,7 @@ describe('dbRateLimiter', () => {
             limit: 1,
             window: 5000,
             rateLimitStore: store,
-            as: 'scoped',
+            as: 'plugin',
             methods: ['GET'],
             pattern: 'IP',
             backingDb: 'sqlite'
@@ -219,7 +219,7 @@ describe('dbRateLimiter', () => {
             rateLimitStore: store,
             routes: ['/limited'],
             whitelistMode: true,
-            as: 'scoped',
+            as: 'plugin',
             methods: ['GET'],
             pattern: 'IP',
             backingDb: 'sqlite'
@@ -253,7 +253,7 @@ describe('dbRateLimiter', () => {
             rateLimitStore: store,
             routes: ['/limited'], // only /limited is "listed"
             whitelistMode: false, // but whitelistMode is false, so /open should still be blocked
-            as: 'scoped',
+            as: 'plugin',
             methods: ['GET'],
             pattern: 'IP',
             backingDb: 'sqlite'
@@ -287,7 +287,7 @@ describe('dbRateLimiter', () => {
             rateLimitStore: store,
             routes: ['/limited'],
             whitelistMode: true,
-            as: 'scoped',
+            as: 'plugin',
             methods: ['GET'],
             pattern: 'IP',
             backingDb: 'sqlite'
@@ -320,7 +320,7 @@ describe('dbRateLimiter', () => {
             window: 1000,
             rateLimitStore: store,
             routes: ['/normal', { path: '/strict', limit: 1, window: 5000 }],
-            as: 'scoped',
+            as: 'plugin',
             methods: ['GET'],
             pattern: 'IPRouteNoParams',
             backingDb: 'sqlite'
@@ -359,7 +359,7 @@ describe('dbRateLimiter', () => {
             limit: 1,
             window: 5000,
             rateLimitStore: store,
-            as: 'scoped',
+            as: 'plugin',
             methods: ['GET'],
             pattern: 'IPRouteNoParams',
             backingDb: 'sqlite'
@@ -398,7 +398,7 @@ describe('dbRateLimiter', () => {
             limit: 1,
             window: 5000,
             rateLimitStore: store,
-            as: 'scoped',
+            as: 'plugin',
             methods: ['GET'],
             pattern: 'IPFullRoute',
             backingDb: 'sqlite'
@@ -440,7 +440,7 @@ describe('dbRateLimiter', () => {
               { path: '/global-user', limit: 1, window: 5000, pattern: 'IP' },
               { path: '/per-route', limit: 1, window: 5000, pattern: 'IPRouteNoParams' }
             ],
-            as: 'scoped',
+            as: 'plugin',
             methods: ['GET'],
             pattern: 'IPFullRoute', // Default
             backingDb: 'sqlite'
@@ -477,7 +477,7 @@ describe('dbRateLimiter', () => {
             window: 5000,
             rateLimitStore: store,
             routes: [{ path: '/login', limit: 1, window: 5000, pattern: 'IP' }, '/dashboard'],
-            as: 'scoped',
+            as: 'plugin',
             methods: ['GET'],
             pattern: 'IPRouteNoParams',
             backingDb: 'sqlite'
@@ -521,7 +521,7 @@ describe('dbRateLimiter', () => {
               { path: '/ip-limit', limit: 1, window: 5000, pattern: 'IP' },
               { path: '/route-limit', limit: 1, window: 5000, pattern: 'IPRouteNoParams' }
             ],
-            as: 'scoped',
+            as: 'plugin',
             methods: ['GET'],
             pattern: 'IPFullRoute',
             backingDb: 'sqlite'
@@ -569,7 +569,7 @@ describe('dbRateLimiter', () => {
             window: 1000,
             rateLimitStore: store as any,
             failOpen: false,
-            as: 'scoped',
+            as: 'plugin',
             methods: ['GET'],
             pattern: 'IP',
             backingDb: 'sqlite'
@@ -599,7 +599,7 @@ describe('dbRateLimiter', () => {
             window: 1000,
             rateLimitStore: store as any,
             failOpen: true,
-            as: 'scoped',
+            as: 'plugin',
             methods: ['GET'],
             pattern: 'IP',
             backingDb: 'sqlite'

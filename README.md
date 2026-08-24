@@ -67,7 +67,7 @@ const app = new Elysia()
 | `methods` | `DBRLMethod[]` | `['POST', 'PUT', ...]` | HTTP methods to rate limit. **Note: GET is excluded by default.** |
 | `pattern` | `DBRLPattern` | `'IPFullRoute'` | Strategy for identifying unique request buckets. |
 | `whitelistMode` | `boolean` | `false` | If `true`, only routes in `routes` are limited. If `false`, all routes are limited (even if no `limit`, no `window`, and no `routes` are specified). |
-| `as` | `'scoped' \| 'global'` | `'scoped'` | Plugin scope. |
+| `as` | `'plugin' \| 'global'` | `'plugin'` | Plugin scope. |
 | `routes` | `(string \| PathConfig)[]` | `undefined` | Whitelist of routes to limit. Supports per-route overrides. |
 | `failOpen` | `boolean` | `true` | If `true`, allows requests if the database fails. |
 | `shouldLog` | `boolean` | `true` (prod) | Whether to log rate limit events via Pino. |
@@ -158,10 +158,28 @@ app.use(dbRateLimiter({
 }));
 ```
 
-### Global vs Scoped
+### Global vs Plugin scope
 
-- **Scoped (Default)**: Limits apply to the group/instance where the plugin is registered.
+- **Plugin (Default)**: Limits apply to the group/instance where the plugin is registered.
 - **Global**: Limits apply to the entire application regardless of where the plugin is mounted.
+
+## Versions
+
+Two supported lines, mirroring how the Elysia ecosystem itself ships. The 2.0 line is
+published as a **prerelease** because the Elysia it targets is itself a beta -- a plain `2.0.1`
+would resolve as stable for `@2` and misrepresent that:
+
+| dist-tag | version | Elysia |
+|---|---|---|
+| `latest` | `0.1.x` | 1.4.x |
+| `next` | `2.0.x-beta.N` | 2.0.0-beta.x |
+
+`npm i @extend-therapy/elysia-db-ratelimiter` gets the 1.4-compatible build;
+`@next` gets the 2.0 one.
+
+**Breaking on the 2.0 line:** the `as` option value `'scoped'` is now `'plugin'`, following
+Elysia 2.0, which dropped the `'scoped'` literal and replaced the `{ as }` object form with a
+bare string scope. The `elysia-ip` peer moves to `^2.0.0`.
 
 ## License
 
