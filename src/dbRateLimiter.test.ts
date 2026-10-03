@@ -555,6 +555,85 @@ describe('dbRateLimiter', () => {
       expect(res3.status).toBe(200);
     });
 
+    describe('dynamic routes (:param)', () => {
+      // Config paths can name the registered pattern. Matching the concrete path
+      // alone meant no config could ever apply to a route with a parameter in it.
+      const post = (app: { handle: (r: Request) => Promise<Response> }, url: string) =>
+        app.handle(
+          new Request(`http://localhost${url}`, {
+            method: 'POST',
+            headers: { 'x-forwarded-for': '127.0.0.9' }
+          })
+        );
+
+      const appWith = (opts: Partial<Parameters<typeof dbRateLimiter>[0]>) =>
+        new Elysia()
+          .use(
+            dbRateLimiter({
+              limit: 100,
+              window: 60_000,
+              rateLimitStore: new SqliteRateLimitStore(':memory:'),
+              as: 'plugin',
+              methods: ['POST'],
+              pattern: 'IPFullRoute',
+              backingDb: 'sqlite',
+              ...opts
+            })
+          )
+          .post('/passkeys/:id/confirm', () => 'ok')
+          .post('/passkeys/:id/other', () => 'ok');
+
+      it('applies a pathConfig written as the route pattern', async () => {
+        const app = appWith({
+          pathConfigs: [{ path: '/passkeys/:id/confirm', limit: 1, window: 60_000 }]
+        });
+        expect((await post(app, '/passkeys/a/confirm')).status).toBe(200);
+        expect((await post(app, '/passkeys/a/confirm')).status).toBe(429);
+      });
+
+      it('counts every id against one budget, so varying the id does not reset it', async () => {
+        const app = appWith({
+          pathConfigs: [{ path: '/passkeys/:id/confirm', limit: 2, window: 60_000 }]
+        });
+        expect((await post(app, '/passkeys/a/confirm')).status).toBe(200);
+        expect((await post(app, '/passkeys/b/confirm')).status).toBe(200);
+        expect((await post(app, '/passkeys/c/confirm')).status).toBe(429);
+      });
+
+      it('leaves other routes on the default limit', async () => {
+        const app = appWith({
+          pathConfigs: [{ path: '/passkeys/:id/confirm', limit: 1, window: 60_000 }]
+        });
+        await post(app, '/passkeys/a/confirm');
+        expect((await post(app, '/passkeys/a/confirm')).status).toBe(429);
+        expect((await post(app, '/passkeys/a/other')).status).toBe(200);
+        expect((await post(app, '/passkeys/a/other')).status).toBe(200);
+      });
+
+      it('applies a routes entry written as the pattern, including in whitelist mode', async () => {
+        const app = appWith({
+          whitelistMode: true,
+          routes: [{ path: '/passkeys/:id/confirm', limit: 1, window: 60_000 }]
+        });
+        expect((await post(app, '/passkeys/a/confirm')).status).toBe(200);
+        expect((await post(app, '/passkeys/b/confirm')).status).toBe(429);
+        // Not whitelisted: never limited.
+        for (let i = 0; i < 3; i += 1) {
+          expect((await post(app, '/passkeys/a/other')).status).toBe(200);
+        }
+      });
+
+      it('still cannot match a dynamic route by a path without its param', async () => {
+        // The shape of the bug (extend-therapy/issues#126): a config naming the
+        // route without its `:id` segment is not that route.
+        const app = appWith({
+          pathConfigs: [{ path: '/passkeys/confirm', limit: 1, window: 60_000 }]
+        });
+        expect((await post(app, '/passkeys/a/confirm')).status).toBe(200);
+        expect((await post(app, '/passkeys/a/confirm')).status).toBe(200);
+      });
+    });
+
     it('should fail closed when failOpen is false and store fails', async () => {
       const store = {
         get: async () => {

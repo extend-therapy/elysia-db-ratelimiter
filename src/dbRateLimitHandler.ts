@@ -10,6 +10,7 @@ export const dbRateLimitHandler = (options: DBRLOptions) => {
     cookie,
     log,
     path,
+    route,
     request,
     set,
     query,
@@ -23,10 +24,24 @@ export const dbRateLimitHandler = (options: DBRLOptions) => {
     let currentPattern = options.pattern;
     let shouldLimit = true;
 
+    // `path` is the concrete URL path ('/passkeys/0199…/confirm'); `route` is
+    // the pattern the route was registered under ('/passkeys/:id/confirm'), set
+    // only for dynamic routes. A config may name either. Matching `path` alone
+    // meant a config could never fire for a route with a `:param` in it.
+    const pathMatches = (p: string) => p === path || (route !== undefined && p === route);
+    // When a config matched by pattern, count by the pattern too: keyed by the
+    // concrete path, every distinct id would get a fresh budget, which is what
+    // the limit is there to prevent.
+    let keyPath = path;
+    const useKeyOf = (p: string) => {
+      if (route !== undefined && p === route && p !== path) keyPath = route;
+    };
+
     if (options.routes) {
       const match = options.routes.find((r) =>
-        typeof r === "string" ? r === path : r.path === path,
+        pathMatches(typeof r === "string" ? r : r.path),
       );
+      if (match) useKeyOf(typeof match === "string" ? match : match.path);
       if (!match) {
         if (options.whitelistMode) {
           shouldLimit = false;
@@ -44,8 +59,9 @@ export const dbRateLimitHandler = (options: DBRLOptions) => {
 
     // pathConfigs takes final precedence if present
     if (options.pathConfigs) {
-      const pathConfig = options.pathConfigs.find((c) => c.path === path);
+      const pathConfig = options.pathConfigs.find((c) => pathMatches(c.path));
       if (pathConfig) {
+        useKeyOf(pathConfig.path);
         currentLimit = pathConfig.limit;
         currentWindow = pathConfig.window;
         if (pathConfig.pattern) currentPattern = pathConfig.pattern;
@@ -143,7 +159,7 @@ export const dbRateLimitHandler = (options: DBRLOptions) => {
         const queryStr = new URLSearchParams(query as Record<string, string>).toString();
 
         // Build the old rate limit ID (using old identifier)
-        const oldRateLimitId = `${oldCookieValue}:${path}${queryStr ? "?" + queryStr : ""}`;
+        const oldRateLimitId = `${oldCookieValue}:${keyPath}${queryStr ? "?" + queryStr : ""}`;
 
         const oldRateLimit = await options.rateLimitStore.get(oldRateLimitId);
 
@@ -155,14 +171,14 @@ export const dbRateLimitHandler = (options: DBRLOptions) => {
               newRateLimitId = rateLimitIdentifier;
               break;
             case "Route":
-              newRateLimitId = path;
+              newRateLimitId = keyPath;
               break;
             case "IPRouteNoParams":
-              newRateLimitId = `${rateLimitIdentifier}:${path}`;
+              newRateLimitId = `${rateLimitIdentifier}:${keyPath}`;
               break;
             case "IPFullRoute":
             default:
-              newRateLimitId = `${rateLimitIdentifier}:${path}${queryStr ? "?" + queryStr : ""}`;
+              newRateLimitId = `${rateLimitIdentifier}:${keyPath}${queryStr ? "?" + queryStr : ""}`;
           }
 
           // Transfer the rate limit count and reset time
@@ -189,15 +205,15 @@ export const dbRateLimitHandler = (options: DBRLOptions) => {
         finalRateLimitId = rateLimitIdentifier;
         break;
       case "Route":
-        finalRateLimitId = path;
+        finalRateLimitId = keyPath;
         break;
       case "IPRouteNoParams":
-        finalRateLimitId = `${rateLimitIdentifier}:${path}`;
+        finalRateLimitId = `${rateLimitIdentifier}:${keyPath}`;
         break;
       case "IPFullRoute":
       default: {
         const queryStr = new URLSearchParams(query as Record<string, string>).toString();
-        finalRateLimitId = `${rateLimitIdentifier}:${path}${queryStr ? "?" + queryStr : ""}`;
+        finalRateLimitId = `${rateLimitIdentifier}:${keyPath}${queryStr ? "?" + queryStr : ""}`;
         break;
       }
     }
