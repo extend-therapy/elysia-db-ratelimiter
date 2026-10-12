@@ -6,14 +6,14 @@
   },
   "private": false,
   "type": "module",
-  "version": "2.0.1-beta.2",
+  "version": "2.0.1-beta.3",
   "author": "Eli Selkin <eli@extendtherapy.com>",
   "license": "MIT",
   "main": "dist/index.js",
   "types": "dist/types/index.d.ts",
   "devDependencies": {
     "@types/bun": "^1.4.0",
-    "elysia": "2.0.0-beta.21",
+    "elysia": "2.0.0-beta.30",
     "elysia-ip": "2.0.0",
     "pino": "^10.3.1",
     "typescript": "^7.0.2"
@@ -26,7 +26,7 @@
     "pub": "op run --env-file=.env.op -- bun publish"
   },
   "peerDependencies": {
-    "elysia": ">= 2.0.0-beta.6",
+    "elysia": ">= 2.0.0-beta.30",
     "elysia-ip": "^2.0.0",
     "pino": "^10.3.1"
   },

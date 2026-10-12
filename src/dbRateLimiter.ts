@@ -49,7 +49,7 @@ export const dbRateLimiter = function dbRateLimiter(
   const plugin = new Elysia({
     name: "redisRateLimit",
     seed: mergedOptions.seed || undefined,
-  }).beforeHandle(mergedOptions.as, (ctx) =>
+  }).onBeforeHandle(mergedOptions.as, (ctx) =>
     dbRateLimitHandler(mergedOptions)({
       ...(ctx as unknown as Context),
       log: (ctx as { log?: Logger }).log ?? logger,
